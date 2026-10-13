@@ -1,0 +1,33 @@
+# ── Model ─────────────────────────────────────────────
+anthropic
+
+# ── Google OAuth & APIs (Gmail, Calendar, Drive) ───────
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+
+# ── Env config ──────────────────────────────────────────
+python-dotenv
+
+# ── Vector index + embeddings ───────────────────────────
+qdrant-client
+fastembed              # dense (bge-small-en-v1.5) + sparse (BM25) — no torch needed
+
+# ── Email/document text cleanup ─────────────────────────
+beautifulsoup4         # strip HTML from Gmail message bodies
+lxml                   # fast parser backend for beautifulsoup4
+
+# ── Drive file text extraction (non-native formats) ─────
+pypdf                  # PDF text extraction
+python-docx            # .docx text extraction
+# Note: native Google Docs/Sheets/Slides export as plain text
+# directly via the Drive API — no extra library needed for those.
+
+# ── Reliability ──────────────────────────────────────────
+tenacity               # retry-with-backoff for Gmail/Calendar/Drive 429/403s, spec §05
+
+# ── Scheduling (5-min ingestion cycle) ───────────────────
+apscheduler
+
+# ── Dev / testing ─────────────────────────────────────────
+pytest
