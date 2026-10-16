@@ -4,7 +4,7 @@ A running log of what was decided, why, and what was rejected. Source material f
 Each entry: **Decision · Why · Rejected alternatives · Evidence** (where we measured something).
 Status markers: ✅ decided · 🟡 open · ⏸ deferred.
 
-Last updated: 2026-10-05
+Last updated: 2026-10-16
 
 ---
 
@@ -267,7 +267,27 @@ Not stored: raw JSON/HTML/base64, the full body as one field, tokens or keys, th
 
 ---
 
-## 9. Process notes (for the blog)
+## 9. Roadmap decisions (2026-10-16)
+
+### 9.1 ✅ V2 scope — Drive, Calendar, Zoom, local files + own MCP servers
+- **Decision:** V2 adds Drive, Calendar, Zoom and local file system as indexed sources. Exposes all tools as own local MCP servers wrapping v1 code. Runs a local Qdrant server (Docker) so multiple MCP servers share one index. Auto-updating memory — agent writes to `memory.md` after each session.
+- **Why:** Same ingestion pipeline, same hybrid search, same filters — just new sources. MCP servers enable any MCP-compatible client to use the index. Local Qdrant server removes the one-process-at-a-time constraint.
+
+### 9.2 ✅ V3 scope — browser automation agent
+- **Decision:** V3 adds a browser-use agent built on Playwright — the agent can navigate websites, fill forms, and take web actions (table booking, reservations, searches) from the personal UI. Approval gate (same pattern as `send_email`) required before any form submission.
+- **Why:** Covers 90% of real-world web actions without full desktop control. Playwright finds elements by text/selector (not pixel coordinates) — more reliable than PyAutoGUI for web tasks. Browser Use (github.com/browser-use/browser-use) is the reference implementation.
+- **Rejected — Claude computer use API:** screenshots go to Anthropic; costs API tokens per frame; not local-first.
+- **Rejected — PyAutoGUI for web:** pixel-coordinate based, brittle, wrong tool for browser tasks.
+- **Personalisation vs browser automation order:** browser automation comes first (V3). Basic web actions don't require knowing the user personally. Personalisation (knowing preferences, style, patterns) enhances automation but isn't a prerequisite — "book a table for 2 at 7pm" works without it.
+
+### 9.3 ✅ V4 scope — full personal agent, local model, personalisation
+- **Decision:** V4 swaps Claude API for a local model (Ollama + Llama/Phi), adds voice input (Whisper), proactive surfacing of important items, fine-tuning on user data, and integrations with Discord, Slack, Notion, Linear, GitHub.
+- **Why:** Fully offline, zero API cost, true privacy. Proactive agent + personalisation is the direction of Apple Intelligence / MUSE. Local model is the prerequisite for both cost and privacy at this level.
+- **Long-term position:** V1–V2 = well-engineered Claude + MCP equivalent. V3 = adds browser actions. V4 = moves toward Apple Intelligence territory — local, private, personalised, proactive.
+
+---
+
+## 10. Process notes (for the blog)
 - **Write first, then compare to open source.** Reading reference code first makes copying too easy.
 - **Most real bugs were found by running code against concrete cases**, not by reading it: silent `auth.py`, MiniLM truncation, forward stripping, HTML line breaks, `model=` silently ignored, `np.array(generator)`.
 - **Sample fixtures** (`scratch/gmail_samples/`) made every cleaning step visible and testable offline, without touching real mail.

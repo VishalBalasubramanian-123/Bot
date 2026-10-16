@@ -1,7 +1,7 @@
 # README brief — exec-assistant
 
 **Purpose of this file:** an accurate fact sheet to hand to an AI (or a person) to write the project's public `README.md`.
-Everything below reflects decisions actually taken and code actually written as of **2026-10-10**.
+Everything below reflects decisions actually taken and code actually written as of **2026-10-16**.
 Detailed reasoning lives in `docs/DECISIONS.md`; function-level behaviour in `docs/FUNCTIONS.md`.
 
 ---
@@ -30,9 +30,9 @@ A **local-first personal executive assistant for Gmail**: it indexes your mailbo
 - **Why BYO Google client:** Gmail read access is a Google *restricted* scope; a single public app would need Google verification plus a paid annual third-party security assessment (CASA). Per-user clients count as personal use. Trade-off: ~10–15 minutes of Google Cloud setup per user, so the audience is technical users.
 - **Built to learn and to show the engineering:** harness, guardrails and evals are treated as the core of the project, not extras.
 
-## 3. Current status (2026-10-10)
+## 3. Current status (2026-10-16)
 
-**Phase 1 of 5 complete** — Gmail ingestion and the hybrid index work end to end.
+**Phase 1 complete, Phase 2 in progress** — Gmail ingestion and the hybrid index work end to end; hybrid search is being built.
 
 Measured on the author's mailbox (last 30 days):
 - **809 / 809** emails indexed, **1,658** chunks (avg 2.05 per email)
@@ -40,7 +40,9 @@ Measured on the author's mailbox (last 30 days):
 - Re-runs skip already-indexed emails without re-downloading or re-embedding them
 - Full ingestion runs with **zero Gmail rate-limit errors** at ~96 emails/minute
 
-**Not yet built:** search (phase 2, next), the agent and its tools, approvals, guardrails, evals, any UI.
+**Phase 2 (in progress):** `hybrid_search` in `assistant/search.py` — dense + sparse prefetch with Qdrant's built-in RRF fusion, dynamic payload filters (sender, label, date range) via a `FilterBuilder` class, sender/name resolution.
+
+**Not yet built:** agent and its tools, approvals, guardrails, evals, any UI.
 
 ## 4. v1 scope (target release: **2026-11-10**)
 
@@ -84,9 +86,9 @@ question ──► agent loop (Claude) ──► tools ──► search (dense +
 | `assistant/ingest/gmail_ingest.py` | list recent IDs → skip already-indexed → fetch → parse → upsert | ✅ |
 | `assistant/ingest/gmail_parse.py` | pure functions: MIME walk, HTML→text, quote stripping, forward handling, `message_fields()` | ✅ |
 | `assistant/ingest/chunking.py` | overlapping word-based chunks, content hashing | ✅ |
-| `assistant/ingest/embeddings.py` | fastembed dense + sparse embeddings (`embed_documents`); `embed_query` 🗓 phase 2 | ✅ / 🗓 |
+| `assistant/ingest/embeddings.py` | fastembed dense + sparse embeddings; `embed_documents` (ingestion) and `embed_query` (search-time query embedding) | ✅ |
 | `assistant/ingest/index.py` | Qdrant collection, `upsert_document` (change detection, delete-by-filter, deterministic IDs), `existing_hashes_ids` (batched, paged lookup) | ✅ |
-| `assistant/search.py` | shared hybrid search used by all tools | 🗓 phase 2 |
+| `assistant/search.py` | `hybrid_search`: dense + sparse prefetch, Qdrant RRF fusion, dynamic `FilterBuilder` (sender, label, date range), result formatting | 🚧 phase 2 |
 | `assistant/model.py`, `loop.py`, `main.py` | Claude client, tool-use loop, terminal chat | 🗓 phase 3 |
 | `assistant/tools/{gmail,web,registry}.py` | agent tools and their schemas | 🗓 phase 3–4 |
 | `assistant/store.py`, `context.py` | event log, checkpoints, approval suspend/resume; token budget/compaction | 🗓 phase 4 |
@@ -164,7 +166,7 @@ Notes:
 | Phase | Dates | Content | Status |
 |---|---|---|---|
 | 1 | Oct 2–10 | ingestion, chunking, embeddings, index, de-duplication, rate limiter | ✅ done (Oct 9) |
-| 2 | Oct 11–18 | hybrid search: `embed_query`, dense + BM25 prefetch merged with RRF, sender/date filters, name→address resolution, 5–10 labelled test questions (dense vs sparse vs hybrid comparison) | 🚧 next |
+| 2 | Oct 11–18 | hybrid search: `embed_query`, dense + BM25 prefetch merged with RRF, sender/date filters via `FilterBuilder`, name→address resolution, 5–10 labelled test questions (dense vs sparse vs hybrid comparison) | 🚧 in progress |
 | 3 | Oct 19–26 | Claude client, tool-use loop with stop conditions and labelled turn ceiling, **read tools** `search_gmail`, `get_thread`, `search_web` **and compose** `create_draft` (new emails and threaded replies; drafts stay in the user's Drafts folder), terminal chat, system prompt (date/timezone, cite-every-claim) | 🗓 |
 | 4 | Oct 27–Nov 2 | event log, checkpoints, approval pause/resume, `send_email` (and sending drafts) behind the approval gate, context budget/compaction | 🗓 |
 | 5 | Nov 3–8 | PII + grounding guardrails, ~20-question eval set, citation grader, guardrail tests, trace viewer, fixes | 🗓 |

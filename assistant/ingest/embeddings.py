@@ -17,3 +17,13 @@ def embed_documents(chunks):
     sparse_list = [(s.indices.tolist(), s.values.tolist()) for s in sparse_document]
 
     return list(zip(dense_list, sparse_list))
+
+def embed_query(chunks):
+
+    dense_document = model_text.query_embed(query=chunks)
+    sparse_document = model_sparse.query_embed(query=chunks)
+
+    dense_list = [c.tolist() for c in dense_document]
+    sparse_list = [(s.indices.tolist(), s.values.tolist()) for s in sparse_document]
+
+    return zip(dense_list, sparse_list)

@@ -34,6 +34,7 @@ class Document:
     date: str | None = None
     sender: str | None = None
     participants: list[str] = field(default_factory=list)
+    labels: list[str] = field(default_factory=list)
     thread_id: str | None = None # Gmail only
     mime_type: str | None = None       # Drive only
     metadata_only: bool = False
@@ -99,18 +100,19 @@ def upsert_document(document, known_hashes):
             id=id,
             vector={DENSE: dense, SPARSE:  models.SparseVector(indices=indices, values=values)},
             payload={
-            "source": document.source, 
-            "external_id": document.external_id, 
-            "thread_id": document.thread_id, 
-            "title": document.title, 
-            "sender": document.sender, 
-            "participants": document.participants, 
-            "date": document.date,
-            "chunk_index": chunk_index, 
-            "total_chunks": total_chunks, 
-            "chunk_text": chunk, 
-            "content_hash": hash_val[chunk_index]
-        },
+                "source": document.source, 
+                "external_id": document.external_id, 
+                "thread_id": document.thread_id, 
+                "title": document.title, 
+                "sender": document.sender, 
+                "participants": document.participants, 
+                "date": document.date,
+                "labels": document.labels,
+                "chunk_index": chunk_index, 
+                "total_chunks": total_chunks, 
+                "chunk_text": chunk, 
+                "content_hash": hash_val[chunk_index]
+            },
         ))
 
     client.upsert(collection_name=config.QDRANT_COLLECTION_NAME, points=points)

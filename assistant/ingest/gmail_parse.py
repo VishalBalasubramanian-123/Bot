@@ -112,4 +112,5 @@ def message_fields(msg):
         "date": date,
         "sender": headers.get("from"),
         "participants": sorted(set(participants)),
+        "labels": msg.get("labelIds", []),
     }
