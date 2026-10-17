@@ -1,7 +1,7 @@
 # README brief — exec-assistant
 
 **Purpose of this file:** an accurate fact sheet to hand to an AI (or a person) to write the project's public `README.md`.
-Everything below reflects decisions actually taken and code actually written as of **2026-10-16**.
+Everything below reflects decisions actually taken and code actually written as of **2026-10-17**.
 Detailed reasoning lives in `docs/DECISIONS.md`; function-level behaviour in `docs/FUNCTIONS.md`.
 
 ---
@@ -27,12 +27,12 @@ A **local-first personal executive assistant for Gmail**: it indexes your mailbo
 - **Audience:** developers, and the author's own use. Not a consumer product.
 - **Local-first:** ingestion, the vector index (Qdrant), and embeddings run **on your machine**. Email content is never sent to a server the author runs. (From phase 3, the question plus a few relevant email snippets go to Anthropic's API to generate answers.)
 - **Bring your own keys, $0 to the author:** each user creates **their own** Google Cloud OAuth client (`credentials.json`) and uses **their own** Anthropic API key. No servers, no Google app verification, no hosting costs.
-- **Why BYO Google client:** Gmail read access is a Google *restricted* scope; a single public app would need Google verification plus a paid annual third-party security assessment (CASA). Per-user clients count as personal use. Trade-off: ~10–15 minutes of Google Cloud setup per user, so the audience is technical users.
+- **Why BYO Google client:** Gmail read access is a Google *restricted* scope; a single public app would need Google verification plus a paid annual third-party security assessment (CASA, ~$5,000–$15,000). Per-user clients count as personal use. Trade-off: ~10–15 minutes of Google Cloud setup per user, so the audience is technical users. (Some tools like OpenWorker use a hosted OAuth broker to handle this for users — a V3+ direction for this project.)
 - **Built to learn and to show the engineering:** harness, guardrails and evals are treated as the core of the project, not extras.
 
-## 3. Current status (2026-10-16)
+## 3. Current status (2026-10-17)
 
-**Phase 1 complete, Phase 2 in progress** — Gmail ingestion and the hybrid index work end to end; hybrid search is being built.
+**Phase 1 complete, Phase 2 nearly done** — Gmail ingestion and the hybrid index work end to end; hybrid search core is built.
 
 Measured on the author's mailbox (last 30 days):
 - **809 / 809** emails indexed, **1,658** chunks (avg 2.05 per email)
@@ -40,7 +40,11 @@ Measured on the author's mailbox (last 30 days):
 - Re-runs skip already-indexed emails without re-downloading or re-embedding them
 - Full ingestion runs with **zero Gmail rate-limit errors** at ~96 emails/minute
 
-**Phase 2 (in progress):** `hybrid_search` in `assistant/search.py` — dense + sparse prefetch with Qdrant's built-in RRF fusion, dynamic payload filters (sender, label, date range) via a `FilterBuilder` class, sender/name resolution.
+**Phase 2 (nearly complete):**
+- `assistant/search.py` — `hybrid_search` with dense + sparse prefetch, Qdrant's built-in RRF fusion, dynamic `query_filter` support
+- `assistant/utils/filters.py` — `FilterBuilder` class with `add_senders`, `add_participants`, `add_labels`, `add_date_range`, `add_source`; chaining pattern; deterministic date sorting
+- Gmail static labels (`INBOX`, `CATEGORY_PROMOTIONS` etc.) now stored in the index payload
+- Remaining: sender/name resolution (`recipients.py`), end-to-end search test
 
 **Not yet built:** agent and its tools, approvals, guardrails, evals, any UI.
 

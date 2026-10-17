@@ -2,7 +2,7 @@ from assistant.config import QDRANT_COLLECTION_NAME, QDRANT_LOCAL_PATH
 from qdrant_client import QdrantClient, models
 import atexit
 from assistant.ingest.embeddings import embed_query
-import assistant.filters as filters
+from assistant.utils.filters import FilterBuilder
 
 client = QdrantClient(path=QDRANT_LOCAL_PATH)
 atexit.register(client.close) 
@@ -14,6 +14,8 @@ def hybrid_search(query, filters=None):
     embeddings = embed_query(query)
     dense_vector, sparse_vec = next(embeddings)
     indices, values = sparse_vec
+
+    filter_build = build_filter(**filters) if filters else None
 
     search_results = client.query_points(
         collection_name=QDRANT_COLLECTION_NAME,
@@ -31,17 +33,28 @@ def hybrid_search(query, filters=None):
             ),
         ],
         query=models.FusionQuery(fusion=models.Fusion.RRF),  # Qdrant does RRF for you
+        query_filter=filter_build,
         limit=5,
         with_payload=True,
     )
 
-    # filter by sender, date range, label, source, etc.
-    build_filters = filters._build_final_filter(**filters)
-    query_filter = client.query_points(
+    result = [
+        {
+            "id": point.id,
+            "score": point.score,
+            "payload": point.payload
+        }
+        for point in search_results.points
+    ]
+    return result
 
+def build_filter(senders=None, participants=None, labels=None, date_range=None, intent="range", source=None):
+    return (
+        FilterBuilder()
+        .add_senders(senders)
+        .add_participants(participants)
+        .add_labels(labels)
+        .add_date_range(date_range, intent)
+        .add_source(source)
+        .build()
     )
-
-    return search_results
-
-
-
