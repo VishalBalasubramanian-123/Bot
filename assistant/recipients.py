@@ -1,15 +1,12 @@
-from assistant.config import QDRANT_COLLECTION_NAME, QDRANT_LOCAL_PATH
-from qdrant_client import QdrantClient, models
-import atexit
+from assistant.config import QDRANT_COLLECTION_NAME
+from qdrant_client import models
+from assistant.db import get_client
 from assistant.utils.filters import FilterBuilder
-
-client = QdrantClient(path=QDRANT_LOCAL_PATH)
-atexit.register(client.close)
 
 def resolve_sender(name: str) -> list[str]:
 
     # Getting the related email id for a name
-    address, _ = client.scroll(
+    address, _ = get_client().scroll(
         collection_name=QDRANT_COLLECTION_NAME,
         scroll_filter=models.Filter(
             should=[

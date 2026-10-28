@@ -26,9 +26,10 @@ def _make_query_response(n=3):
     return response
 
 
-@patch("assistant.search.client")
+@patch("assistant.search.get_client")
 @patch("assistant.search.embed_query")
-def test_hybrid_search_returns_list(mock_embed, mock_client):
+def test_hybrid_search_returns_list(mock_embed, mock_get_client):
+    mock_client = mock_get_client.return_value
     mock_embed.return_value = iter([([0.1] * 384, ([0, 1], [0.5, 0.5]))])
     mock_client.query_points.return_value = _make_query_response(3)
 
@@ -37,9 +38,10 @@ def test_hybrid_search_returns_list(mock_embed, mock_client):
     assert len(results) == 3
 
 
-@patch("assistant.search.client")
+@patch("assistant.search.get_client")
 @patch("assistant.search.embed_query")
-def test_hybrid_search_result_has_expected_keys(mock_embed, mock_client):
+def test_hybrid_search_result_has_expected_keys(mock_embed, mock_get_client):
+    mock_client = mock_get_client.return_value
     mock_embed.return_value = iter([([0.1] * 384, ([0, 1], [0.5, 0.5]))])
     mock_client.query_points.return_value = _make_query_response(1)
 
@@ -49,9 +51,10 @@ def test_hybrid_search_result_has_expected_keys(mock_embed, mock_client):
     assert "payload" in results[0]
 
 
-@patch("assistant.search.client")
+@patch("assistant.search.get_client")
 @patch("assistant.search.embed_query")
-def test_hybrid_search_no_filter(mock_embed, mock_client):
+def test_hybrid_search_no_filter(mock_embed, mock_get_client):
+    mock_client = mock_get_client.return_value
     mock_embed.return_value = iter([([0.1] * 384, ([0, 1], [0.5, 0.5]))])
     mock_client.query_points.return_value = _make_query_response(2)
 
@@ -60,9 +63,10 @@ def test_hybrid_search_no_filter(mock_embed, mock_client):
     assert call_kwargs["query_filter"] is None
 
 
-@patch("assistant.search.client")
+@patch("assistant.search.get_client")
 @patch("assistant.search.embed_query")
-def test_hybrid_search_with_sender_filter(mock_embed, mock_client):
+def test_hybrid_search_with_sender_filter(mock_embed, mock_get_client):
+    mock_client = mock_get_client.return_value
     mock_embed.return_value = iter([([0.1] * 384, ([0, 1], [0.5, 0.5]))])
     mock_client.query_points.return_value = _make_query_response(1)
 
@@ -71,9 +75,10 @@ def test_hybrid_search_with_sender_filter(mock_embed, mock_client):
     assert call_kwargs["query_filter"] is not None
 
 
-@patch("assistant.search.client")
+@patch("assistant.search.get_client")
 @patch("assistant.search.embed_query")
-def test_hybrid_search_empty_results(mock_embed, mock_client):
+def test_hybrid_search_empty_results(mock_embed, mock_get_client):
+    mock_client = mock_get_client.return_value
     mock_embed.return_value = iter([([0.1] * 384, ([0, 1], [0.5, 0.5]))])
     mock_client.query_points.return_value = _make_query_response(0)
 

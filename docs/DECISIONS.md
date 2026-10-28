@@ -4,7 +4,7 @@ A running log of what was decided, why, and what was rejected. Source material f
 Each entry: **Decision · Why · Rejected alternatives · Evidence** (where we measured something).
 Status markers: ✅ decided · 🟡 open · ⏸ deferred.
 
-Last updated: 2026-10-16
+Last updated: 2026-10-28
 
 ---
 
@@ -208,7 +208,14 @@ list IDs → skip IDs already indexed → fetch new messages → clean → Docum
 - **Query flow example:** "What did Priya say about the rescheduling?" → model calls `search_gmail(query="rescheduling", sender="priya…")` → Qdrant applies the sender filter during a dense + sparse search, RRF merges → top chunks with payload → cited answer. In the test, sparse found nothing ("rescheduling" vs "move"); dense found it.
 - **Needs:** resolving "Priya" to an exact address (contact resolution), and tool descriptions that keep topic (`query`) and constraints (`sender`, dates) separate — evals should check the model does this.
 
-### 6.5 Payload fields (each must have a reader)
+### 6.5 ✅ One shared Qdrant client, created on first use — decided 2026-10-28
+- **Decision:** `assistant/db.py` owns the only client: `get_client()`, cached with `lru_cache`. Collection creation moved into `index.ensure_collection()`, also run once on first use. Importing a module never opens Qdrant.
+- **Why:** `search.py`, `recipients.py` and `index.py` each created a client at import time. Local Qdrant locks its folder to one client per process, so importing two of them crashed (`Storage folder ... is already accessed by another instance`). It showed up as a test-collection error when running the whole suite, and the agent would have crashed as soon as the tool registry imported both search and recipients.
+- **Rejected — one client per module:** the bug itself. **Rejected — a module-level `client = QdrantClient(...)` in db.py:** fixes the lock, but importing still has side effects (opens the database, holds the lock) and tests can't swap it cleanly.
+- **Bonus:** `QDRANT_MODE=server` switches to a Qdrant server in one place, which v2's shared MCP servers need (see 7.2).
+- **Evidence:** full suite went from a collection error to 30/30 passing; search + recipient lookup + dedup check run in one process against the real index.
+
+### 6.6 Payload fields (each must have a reader)
 | Field | Used by |
 |---|---|
 | `source` | filters, dedup |
@@ -224,7 +231,7 @@ list IDs → skip IDs already indexed → fetch new messages → clean → Docum
 
 Not stored: raw JSON/HTML/base64, the full body as one field, tokens or keys, the model name (see 2.3).
 
-### 6.6 🟡 Open payload decisions
+### 6.7 🟡 Open payload decisions
 - **Gmail labels:** useful for "needs attention" (exclude promotions), but labels like `UNREAD` change and known emails are never re-fetched, so stored labels go stale.
 - **`sender` format:** `"Priya Raman <priya.raman@example.com>"` won't exact-match a filter on the address. Address only, or name + address as two fields.
 - **Embedding input:** `chunk_text` alone, or `title + chunk_text` (helps later chunks of long emails). Must decide before indexing; changing it means re-indexing.

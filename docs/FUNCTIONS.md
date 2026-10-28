@@ -4,7 +4,24 @@ What each function does, step by step, and the contract callers rely on.
 The code keeps only one-line docstrings; the detail lives here.
 For *why* a design was chosen, see [DECISIONS.md](DECISIONS.md).
 
-Last updated: 2026-10-08
+Last updated: 2026-10-28
+
+---
+
+## `assistant/db.py`
+
+The one shared Qdrant client. Every module that reads or writes the index (`index.py`, `search.py`, `recipients.py`, later the tools) calls `get_client()` instead of creating its own client.
+
+### `get_client() -> QdrantClient`
+
+1. First call: opens the client.
+   - `config.QDRANT_MODE == "server"` → `QdrantClient(url=config.QDRANT_URL, api_key=config.QDRANT_API_KEY or None)`.
+   - otherwise → `QdrantClient(path=config.QDRANT_LOCAL_PATH)` (local mode).
+2. Registers `client.close` with `atexit` (avoids a noisy `__del__` error at interpreter shutdown).
+3. Later calls return the **same** client (`@lru_cache(maxsize=1)`).
+
+**Why one client:** local Qdrant locks the folder, so a second client in the same process raises `RuntimeError: Storage folder ... is already accessed by another instance`.
+**Testing:** patch `assistant.<module>.get_client` and set `.return_value` to a mock client; call `get_client.cache_clear()` between tests that patch `QdrantClient` itself.
 
 ---
 
@@ -22,14 +39,16 @@ Every source (Gmail now; Calendar and Drive later) stores data through `upsert_d
 | `_ID_NAMESPACE` | fixed UUID | namespace for `uuid5` point IDs. **Never change it** — every existing point ID depends on it; changing it turns re-runs into duplicates |
 | `_ID_BATCH_SIZE` | `500` | how many IDs go into one `MatchAny` filter in `existing_hashes_ids` |
 
-### Module setup (runs on import)
+### `ensure_collection()`
 
-1. Opens a local Qdrant client at `config.QDRANT_LOCAL_PATH`.
+Importing the module touches nothing. The first call to `upsert_document` or `existing_hashes_ids` calls `ensure_collection()`, which:
+
+1. Gets the shared client from `assistant.db.get_client()` (see below).
 2. If `config.QDRANT_COLLECTION_NAME` doesn't exist, creates it with:
    - dense vector `DENSE`: size `config.EMBEDDING_DIM` (384), cosine distance
    - sparse vector `SPARSE`: `Modifier.IDF` (required for BM25's "rare words count more")
 
-Note: local Qdrant allows one client per folder. Planned change: move this into a `get_client()` function so importing the module has no side effects.
+`@lru_cache(maxsize=1)` makes later calls free: the check runs once per process.
 
 ---
 

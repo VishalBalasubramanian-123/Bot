@@ -1,11 +1,8 @@
-from assistant.config import QDRANT_COLLECTION_NAME, QDRANT_LOCAL_PATH
-from qdrant_client import QdrantClient, models
-import atexit
+from assistant.config import QDRANT_COLLECTION_NAME
+from qdrant_client import models
+from assistant.db import get_client
 from assistant.ingest.embeddings import embed_query
 from assistant.utils.filters import FilterBuilder
-
-client = QdrantClient(path=QDRANT_LOCAL_PATH)
-atexit.register(client.close) 
 
 def hybrid_search(query, filters=None):
     """This is a common search function for the connected external systems to do search on their contents. Gmauil, Drive, Calendar uses this."""
@@ -17,7 +14,7 @@ def hybrid_search(query, filters=None):
 
     filter_build = build_filter(**filters) if filters else None
 
-    search_results = client.query_points(
+    search_results = get_client().query_points(
         collection_name=QDRANT_COLLECTION_NAME,
         prefetch=[
             models.Prefetch(

@@ -3,15 +3,16 @@
 Every source (gmail / calendar / drive) goes through upsert_document(), so all
 points carry the same payload fields.
 """
-import atexit
 import logging
 import uuid
 from dataclasses import dataclass, field
 from collections import defaultdict
+from functools import lru_cache
 
-from qdrant_client import QdrantClient, models
+from qdrant_client import models
 
 from assistant import config
+from assistant.db import get_client
 from assistant.ingest.chunking import chunk_text, content_hash
 from assistant.ingest.embeddings import embed_documents
 
@@ -49,21 +50,24 @@ class chunks:
     content_hash: str
     ingested_at: str
 
-client = QdrantClient(path=config.QDRANT_LOCAL_PATH)
-atexit.register(client.close)  # close before interpreter teardown; QdrantClient.__del__ fails noisily at shutdown
+@lru_cache(maxsize=1)
+def ensure_collection():
+    """Create the collection on first use if it doesn't exist. See docs/FUNCTIONS.md."""
+    client = get_client()
+    if not client.collection_exists(config.QDRANT_COLLECTION_NAME):
+        client.create_collection(
+            collection_name=config.QDRANT_COLLECTION_NAME,
+            vectors_config={
+                DENSE: models.VectorParams(size=config.EMBEDDING_DIM, distance=models.Distance.COSINE),
+            },
+            sparse_vectors_config={
+                SPARSE: models.SparseVectorParams(modifier=models.Modifier.IDF),
+            },
+        )
 
-if not client.collection_exists(config.QDRANT_COLLECTION_NAME):
-    client.create_collection(
-        collection_name=config.QDRANT_COLLECTION_NAME,
-        vectors_config={
-            DENSE: models.VectorParams(size=config.EMBEDDING_DIM, distance=models.Distance.COSINE),
-        },
-        sparse_vectors_config={
-            SPARSE: models.SparseVectorParams(modifier=models.Modifier.IDF),
-        },
-    )
 def upsert_document(document, known_hashes):
     """Store one Document; returns points written. See docs/FUNCTIONS.md."""
+    ensure_collection()
 
     chunks = chunk_text(document.text)
 
@@ -81,7 +85,7 @@ def upsert_document(document, known_hashes):
     embed = embed_documents(chunk_title)
 
     if known_hashes:
-        client.delete(
+        get_client().delete(
         collection_name=config.QDRANT_COLLECTION_NAME,
         points_selector=models.FilterSelector(
             filter=models.Filter(must=[
@@ -115,7 +119,7 @@ def upsert_document(document, known_hashes):
             },
         ))
 
-    client.upsert(collection_name=config.QDRANT_COLLECTION_NAME, points=points)
+    get_client().upsert(collection_name=config.QDRANT_COLLECTION_NAME, points=points)
     return len(points)
 
 def existing_hashes_ids(source, ids):
@@ -123,6 +127,8 @@ def existing_hashes_ids(source, ids):
 
     if not ids:
         return {}
+
+    ensure_collection()
     
     stored = defaultdict(set)
 
@@ -130,7 +136,7 @@ def existing_hashes_ids(source, ids):
         offset = None
         batch = ids[id: id + _ID_BATCH_SIZE]
         while True:
-            results, next_page_offset = client.scroll(
+            results, next_page_offset = get_client().scroll(
                 collection_name=config.QDRANT_COLLECTION_NAME,
                 scroll_filter=models.Filter(
                     must=[
