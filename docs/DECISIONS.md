@@ -272,6 +272,13 @@ Not stored: raw JSON/HTML/base64, the full body as one field, tokens or keys, th
 - **Decision:** ~20 real questions per the v1 jobs, each with `expected_sources` (message IDs). Grader: Jaccard similarity between cited and expected sources, pass at > 0.7. Plus guardrail tests (unapproved send blocked, ungrounded answer caught).
 - **Why:** turns "I think chunk size 250 is better" into a measured result, and pairs with the trace viewer: the grader says *how often* it fails, the trace says *why*.
 
+### 8.3 ✅ Model calls: own retry loop; long waits are reported, not waited out — decided 2026-10-28
+- **Decision:** `model.py` sets the SDK's `max_retries=0` and retries itself: connection errors/timeouts, 429 and 5xx only; honour `retry-after` exactly; otherwise exponential backoff with full jitter; 5 tries. If the server asks for more than 30 s, raise `RetryLaterError` ("try again in Xs") instead of waiting.
+- **Why own loop:** learning goal (every line explainable), and control — each retry can later be written to the event log (8.1) and the cap/attempt budget is ours. The SDK's built-in retries do almost the same (they also retry 408/409); that's the fallback if this ever becomes a maintenance burden.
+- **Why give up past 30 s:** in an interactive chat, a frozen terminal looks broken; telling the user how long to wait is better. The chat layer decides how to show it, so `model.py` stays UI-free.
+- **Rejected — retrying only 529:** a 500/503 hiccup failed the user's turn on the first try. **Rejected — fixed 1/2/4/8 s waits:** retried before `retry-after` expired (every try wasted) and kept concurrent callers in lockstep. **Rejected — tenacity (as in `auth.py`):** fine, but the hand-written version is short and was the point of the exercise.
+- **Evidence:** `tests/test_model.py` — 31 cases with a mocked API; full suite 61/61.
+
 ---
 
 ## 9. Roadmap decisions (2026-10-16)

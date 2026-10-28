@@ -201,3 +201,38 @@ Costs are what Google **actually** charges, not the documented ones: `messages.g
 - One shared instance, `_gmail_bucket`: budget `config.GMAIL_UNITS_PER_MINUTE` (4,800 → 80 units/s), capacity = the largest cost (250). Steady state for ingestion: 80 ÷ 50 = 1.6 gets/s ≈ **96 gets/min**; burst after a pause: 250 ÷ 50 = 5 gets.
 
 **Verified behaviour:** offline — costs looked up correctly; a send waits 250/80 ≈ 3.1 s from an empty tank (not clamped); 15 gets = 5 instant + 10 × 0.625 s; a retried call is paced on each attempt; two threads don't overspend. Live — 242 gets over 150 s at 97/min with no 403.
+
+---
+
+## `assistant/model.py` — Claude API calls
+
+One shared `anthropic.Anthropic` client with `max_retries=0`: the SDK's own retries are off, because this module does its own (see DECISIONS 8.3).
+
+| Name | Value | Purpose |
+|---|---|---|
+| `_MAX_TRIES` | `5` | total attempts per call, including the first |
+| `_MAX_WAIT_SECONDS` | `30` | a `retry-after` longer than this is reported to the user instead of waited out |
+
+### `call_model(messages, tools, system="")`
+Sends one Messages API request (`config.ANTHROPIC_MODEL`, `max_tokens=8192`) and returns the response.
+1. Try the request.
+2. On any `anthropic.APIError`: if `_is_retryable(e)` is false, or this was the last try → re-raise.
+3. Otherwise sleep `_wait_seconds(e, attempt)` and try again.
+
+Raises the original SDK error for non-retryable errors or after `_MAX_TRIES`, and `RetryLaterError` when the server asks for a wait over the cap.
+
+### `_is_retryable(error) -> bool`
+`True` for `APIConnectionError` (includes timeouts), 429, and any 5xx (500/502/503, 529 overloaded). `False` for other 4xx (bad request, bad key, not found) — sending the same request again fails the same way.
+
+### `_wait_seconds(error, attempt) -> float`
+1. Connection errors have no response → `_backoff(attempt)`.
+2. `retry-after` header is a number → wait exactly that (no jitter). Over `_MAX_WAIT_SECONDS` → raise `RetryLaterError` (chained `from` the API error).
+3. Header missing or not a number (it may legally be an HTTP date) → `_backoff(attempt)`.
+
+### `_backoff(attempt) -> float`
+Full jitter: `random.uniform(0, 2 ** attempt)` → attempt 0: 0–1 s, 1: 0–2 s, 2: 0–4 s, 3: 0–8 s. Randomness stops many callers retrying in lockstep.
+
+### `RetryLaterError(retry_after, status_code)`
+Carries `retry_after` (seconds) and `status_code`; message e.g. *"The Anthropic API is rate limited (HTTP 429) — try again in 45s."* ("busy" for 5xx). The chat layer catches it, shows the message and keeps the session running.
+
+**Verified behaviour** (`tests/test_model.py`, mocked API + `time.sleep`): 503 → 500 → success in 3 calls · 429 `retry-after: 10` waits exactly 10 s · timeout retried · 400/401 raise after 1 call, no wait · 5 × 503 raises after 5 calls and 4 waits · `retry-after: 45` raises `RetryLaterError` with no wait · backoff stays in range and varies. Live: one real call returned `end_turn`.
