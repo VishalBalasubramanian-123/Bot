@@ -237,6 +237,14 @@ Not stored: raw JSON/HTML/base64, the full body as one field, tokens or keys, th
 - **Embedding input:** `chunk_text` alone, or `title + chunk_text` (helps later chunks of long emails). Must decide before indexing; changing it means re-indexing.
 - **`chunk_index`** base 0 or 1. **`mime_type`, `metadata_only`, `ingested_at`:** include only if something reads them (`mime_type`/`metadata_only` are for Drive's metadata-only files).
 
+### 6.8 ✅ `gmail_search` contract — decided 2026-10-28
+- **Sender:** Claude extracts the name into `sender` as part of the tool call (no extra LLM call, no parsing in code). `resolve_sender` matches only the `sender` field and returns the stored `"Name <addr>"` strings, which feed the exact-match `senders` filter. This works on today's index without re-indexing. **Rejected — the participants filter:** every email lists the user's own address there, so the lookup returned it and the filter matched every email. **Rejected for now — a `sender_email` field:** cleaner, but needs a re-index; revisit when the index is rebuilt (6.7).
+- **Dates:** `date_from`/`date_to` as `YYYY-MM-DD` (unambiguous names, per Anthropic's "Writing tools for agents"), inclusive, in the **user's local days**: `USER_TIMEZONE` (IANA name, optional; default = the computer's timezone), with each date's own offset so daylight saving is right. **Rejected — fixed `+00:00`:** emails near midnight landed on the wrong day (e.g. 00:30 local on Oct 8 in summer Dublin is Oct 7 UTC). **Rejected — a fixed offset like `+01:00`:** wrong for half the year because of daylight saving. **End bound:** `lt` the next local midnight (a half-open range [start, end)), not `lte 23:59:59`. Both work for today's whole-second dates, but `lt` also covers fractional seconds and needs no "last second" constant. Today's date goes in the system prompt so Claude can turn "last week" into dates.
+- **Result:** one dict per email, chunks grouped by `external_id` (not title, not `groupby`), joined in `chunk_index` order, with `parts`. Only fields Claude uses are kept; no Qdrant ids or hashes.
+- **Errors:** problems Claude can fix raise `ToolError` with an actionable message. An unknown sender is an error, not a silent unfiltered search. No results → `[]`.
+- **`participants` parameter dropped for v1:** filtering on participants needs bare addresses plus the user's own address in config to exclude it. "From X" covers the Oct 31 demo. Add it back with the `sender_email` re-index.
+- **Evidence:** `tests/test_gmail_tools.py`, `tests/test_recipients.py`, `tests/test_filters.py`; suite 88/88. Live: `sender="AWS"` returns only AWS senders; `date_from="2026-09-18", date_to="2026-09-18"` returns only that day.
+
 ---
 
 ## 7. Actions (Phase B in v1)

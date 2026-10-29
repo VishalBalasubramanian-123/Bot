@@ -251,3 +251,19 @@ Returns the sender strings stored in the index (e.g. `Amazon Web Services <invoi
 - **Reads every page.** `scroll` returns one page of chunks at a time (10 by default). It loops on `next_page_offset` with `limit=256`, so senders on later pages aren't missed.
 - `MatchText` matches whole words, so "AWS" also matches the Udemy course "AWS Certified…" and "Credly" matches "…via Credly". These are real matches on the name; the search query still ranks the results.
 
+## `assistant/tools/errors.py`
+
+### `ToolError(message)`
+Raised by a tool when Claude can fix the problem by calling it differently (empty query, a bad date, an unknown sender). The registry will send the message to Claude as an `is_error` tool result. Other exceptions are bugs: the registry will send a generic message and log the traceback.
+
+## `assistant/tools/gmail.py` — Gmail tools for the agent
+
+### `gmail_search(query, sender=None, date_from=None, date_to=None) -> list[dict]`
+Searches the indexed Gmail with `hybrid_search` and returns one dict per email, best match first:
+`external_id`, `thread_id`, `title`, `sender`, `date`, `participants`, `parts` ("2 of 8"), `text`.
+- `query`: the topic only. `sender`: a name or company that Claude extracted from the user's question. It goes to `resolve_sender`, and the result becomes the `senders` filter. An unknown sender raises `ToolError` instead of quietly searching with no filter.
+- `date_from` / `date_to`: `YYYY-MM-DD`, both inclusive, turned into `date_range` + `intent` by `_date_filter` (both → `half_open`, only from → `gte`, only to → `lt`). The end bound is **midnight starting the day after `date_to`, excluded** (`lt`), so every moment of `date_to` is covered, fractions of a second included, and nothing from the next day. Days are the **user's local days**: `_local_moment` builds midnight in `USER_TIMEZONE` (or the computer's timezone if unset), with the offset that applies **on that date**, so daylight saving is handled (Dublin, `date_from=date_to=2026-10-25` → `T00:00:00+01:00` … `2026-10-26T00:00:00+00:00`). Qdrant compares moments, so the stored UTC dates match correctly. Bad formats and reversed ranges raise `ToolError` (`_parse_day`).
+- Grouping: chunks go into a `defaultdict(list)` keyed by `external_id`. Not `itertools.groupby`, which only groups items that are next to each other: results come in score order, so chunks were silently lost. Not the title either: different emails share titles (monthly invoices).
+- `_to_email`: sorts an email's chunks by `chunk_index`, joins their text, and keeps only the fields above. The Qdrant `id`, `score`, `content_hash`, `source` and the chunk numbers are dropped. `parts` tells Claude when it saw only part of an email (use `get_thread` for the rest).
+- Email order is the best chunk's score; dicts keep insertion order. No results → `[]`, not an error.
+- `participants` parameter: removed for v1 (see DECISIONS 6.8).

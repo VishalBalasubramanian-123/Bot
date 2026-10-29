@@ -1,6 +1,7 @@
 """Single place that reads .env. Every other module imports settings from here."""
 import os
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 
@@ -89,6 +90,10 @@ EVENT_LOG_PATH = _path("EVENT_LOG_PATH", "data/event_log.jsonl")
 PRESIDIO_ENABLED = _bool("PRESIDIO_ENABLED", False)
 GROUNDING_CHECK_ENABLED = _bool("GROUNDING_CHECK_ENABLED", False)
 
+# ── User ─────────────────────────────────────────────────────
+# IANA name like "Europe/Dublin"; empty = use the computer's own timezone
+USER_TIMEZONE = os.getenv("USER_TIMEZONE", "").strip()
+
 # ── Dev safety ───────────────────────────────────────────────
 APP_ENV = _str("APP_ENV", "development")
 USE_TEST_ACCOUNT = _bool("USE_TEST_ACCOUNT", True)
@@ -97,3 +102,8 @@ if EMBEDDING_PROVIDER != "fastembed":
     raise RuntimeError(f"EMBEDDING_PROVIDER must be 'fastembed', got {EMBEDDING_PROVIDER!r}")
 if CHUNK_OVERLAP_TOKENS >= CHUNK_SIZE_TOKENS:
     raise RuntimeError("CHUNK_OVERLAP_TOKENS must be smaller than CHUNK_SIZE_TOKENS")
+if USER_TIMEZONE:
+    try:
+        ZoneInfo(USER_TIMEZONE)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise RuntimeError(f"USER_TIMEZONE must be an IANA name like 'Europe/Dublin', got {USER_TIMEZONE!r}")
