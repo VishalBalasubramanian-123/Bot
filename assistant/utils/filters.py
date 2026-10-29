@@ -23,6 +23,20 @@ class FilterBuilder:
 
         self.error(value)
 
+    def _build_lt_condition(self, key: str, value: str) -> models.Condition:
+        if isinstance(value, str) and self.is_datetime_string(value):
+            dt_value = datetime.fromisoformat(value)
+            return models.FieldCondition(key=key, range=models.DatetimeRange(lt=dt_value))
+
+        self.error(value)
+
+    def _build_gt_condition(self, key: str, value: str) -> models.Condition:
+        if isinstance(value, str) and self.is_datetime_string(value):
+            dt_value = datetime.fromisoformat(value)
+            return models.FieldCondition(key=key, range=models.DatetimeRange(gt=dt_value))
+
+        self.error(value)
+
     def _build_gte_condition(self, key: str, value: str) -> models.Condition:
         if isinstance(value, str) and self.is_datetime_string(value):
             dt_value = datetime.fromisoformat(value)
@@ -44,15 +58,27 @@ class FilterBuilder:
         return self
     
     def add_date_range(self, date_range: list[str], intent: str = "range") -> "FilterBuilder":
+        """Add date conditions. intent: "range" [start, end], "half_open" [start, end), or one bound: gte, gt, lte, lt."""
         if date_range:
             parsed = sorted(date_range)
             if intent == "range":
                 self.must.append(self._build_gte_condition("date", parsed[0]))
                 self.must.append(self._build_lte_condition("date", parsed[1]))
+            elif intent == "half_open":
+                # Start included, end excluded: [day 00:00, next day 00:00) covers every moment of the days
+                self.must.append(self._build_gte_condition("date", parsed[0]))
+                self.must.append(self._build_lt_condition("date", parsed[1]))
             elif intent == "gte":
                 self.must.append(self._build_gte_condition("date", parsed[0]))
-            else:
+            elif intent == "gt":
+                self.must.append(self._build_gt_condition("date", parsed[0]))
+            elif intent == "lte":
                 self.must.append(self._build_lte_condition("date", parsed[0]))
+            elif intent == "lt":
+                self.must.append(self._build_lt_condition("date", parsed[0]))
+            else:
+                # Used to fall through to lte, so a typo like "lt " silently became a different filter
+                raise ValueError(f"Unknown date intent {intent!r}; use range, half_open, gte, gt, lte or lt")
 
         return self
     

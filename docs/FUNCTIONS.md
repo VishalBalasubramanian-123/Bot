@@ -236,3 +236,9 @@ Full jitter: `random.uniform(0, 2 ** attempt)` → attempt 0: 0–1 s, 1: 0–2 
 Carries `retry_after` (seconds) and `status_code`; message e.g. *"The Anthropic API is rate limited (HTTP 429) — try again in 45s."* ("busy" for 5xx). The chat layer catches it, shows the message and keeps the session running.
 
 **Verified behaviour** (`tests/test_model.py`, mocked API + `time.sleep`): 503 → 500 → success in 3 calls · 429 `retry-after: 10` waits exactly 10 s · timeout retried · 400/401 raise after 1 call, no wait · 5 × 503 raises after 5 calls and 4 waits · `retry-after: 45` raises `RetryLaterError` with no wait · backoff stays in range and varies. Live: one real call returned `end_turn`.
+
+## `assistant/utils/filters.py`
+
+### `FilterBuilder().add_date_range(date_range, intent="range")`
+Adds conditions on the `date` field. `intent`: `range` = [start, end] (`gte` + `lte`); `half_open` = [start, end) (`gte` + `lt`, used by `gmail_search`); or a single bound: `gte`, `gt`, `lte`, `lt`. An unknown intent raises `ValueError`. It used to fall through to `lte` silently, so a typo changed the filter without any error.
+

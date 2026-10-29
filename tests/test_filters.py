@@ -80,6 +80,28 @@ def test_add_date_range_sorts_deterministically():
     assert gte_cond.range.gte < lte_cond.range.lte
 
 
+def test_add_date_range_half_open_excludes_end():
+    f = FilterBuilder().add_date_range(
+        ["2026-10-10T00:00:00+00:00", "2026-10-18T00:00:00+00:00"],
+        intent="half_open"
+    ).build()
+    assert f.must[0].range.gte is not None
+    assert f.must[1].range.lt is not None and f.must[1].range.lte is None
+
+
+@pytest.mark.parametrize("intent", ["gte", "gt", "lte", "lt"])
+def test_add_date_range_single_bound_uses_matching_operator(intent):
+    f = FilterBuilder().add_date_range(["2026-10-10T00:00:00+00:00"], intent=intent).build()
+    assert len(f.must) == 1
+    used = {op for op in ("gte", "gt", "lte", "lt") if getattr(f.must[0].range, op) is not None}
+    assert used == {intent}
+
+
+def test_unknown_intent_raises_instead_of_falling_back_to_lte():
+    with pytest.raises(ValueError, match="Unknown date intent"):
+        FilterBuilder().add_date_range(["2026-10-10T00:00:00+00:00"], intent="lt ")
+
+
 def test_invalid_date_raises():
     with pytest.raises(ValueError):
         FilterBuilder().add_date_range(["not-a-date"], intent="gte").build()
