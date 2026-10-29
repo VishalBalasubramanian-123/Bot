@@ -242,3 +242,12 @@ Carries `retry_after` (seconds) and `status_code`; message e.g. *"The Anthropic 
 ### `FilterBuilder().add_date_range(date_range, intent="range")`
 Adds conditions on the `date` field. `intent`: `range` = [start, end] (`gte` + `lte`); `half_open` = [start, end) (`gte` + `lt`, used by `gmail_search`); or a single bound: `gte`, `gt`, `lte`, `lt`. An unknown intent raises `ValueError`. It used to fall through to `lte` silently, so a typo changed the filter without any error.
 
+## `assistant/recipients.py` — turning a name into senders
+
+### `resolve_sender(name) -> list[str]`
+Returns the sender strings stored in the index (e.g. `Amazon Web Services <invoicing@aws.com>`) whose name or address contains `name`, sorted and de-duplicated.
+- **Looks only at the `sender` field.** Participants aren't used: every email lists the user's own address there, so including them added the user's address to every lookup.
+- **Returns the stored format exactly**, because the `senders` filter is an exact match. Bare addresses would need a separate `sender_email` field and a re-index (see DECISIONS 6.7).
+- **Reads every page.** `scroll` returns one page of chunks at a time (10 by default). It loops on `next_page_offset` with `limit=256`, so senders on later pages aren't missed.
+- `MatchText` matches whole words, so "AWS" also matches the Udemy course "AWS Certified…" and "Credly" matches "…via Credly". These are real matches on the name; the search query still ranks the results.
+
