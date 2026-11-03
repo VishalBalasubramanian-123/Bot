@@ -1,10 +1,24 @@
+import base64
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
+from email.mime.text import MIMEText
 from zoneinfo import ZoneInfo
+
+from assistant.auth import build_service, execute
 from assistant.config import USER_TIMEZONE
-from assistant.search import hybrid_search
+from assistant.ingest.gmail_parse import message_fields
 from assistant.recipients import resolve_sender
+from assistant.search import hybrid_search
 from assistant.tools.errors import ToolError
+
+_gmail_service = None
+
+
+def _gmail():
+    global _gmail_service
+    if _gmail_service is None:
+        _gmail_service = build_service("gmail", "v1")
+    return _gmail_service
 
 def gmail_search(query, sender=None, date_from=None, date_to=None) -> list[dict]:
     """Search the user's indexed Gmail and return the matching emails, best match first. See docs/FUNCTIONS.md."""
@@ -33,6 +47,56 @@ def gmail_search(query, sender=None, date_from=None, date_to=None) -> list[dict]
 
     # Dicts keep insertion order, so emails stay sorted by their best chunk's score
     return [_to_email(chunks) for chunks in grouped_results.values()]
+
+
+def get_thread(thread_id: str) -> list[dict]:
+    """Fetch all messages in a Gmail thread, oldest first. See docs/FUNCTIONS.md."""
+    thread = execute(_gmail().users().threads().get(userId="me", id=thread_id, format="full"))
+    messages = sorted(thread.get("messages", []), key=lambda m: int(m["internalDate"]))
+    return [_message_to_result(msg) for msg in messages]
+
+
+def create_draft(external_id: str, body: str) -> dict:
+    """Create a Gmail draft reply to external_id. Returns {"draft_id": ...}. See docs/FUNCTIONS.md."""
+    orig = execute(_gmail().users().messages().get(userId="me", id=external_id, format="full"))
+    hdrs = {h["name"].lower(): h["value"] for h in orig["payload"].get("headers", [])}
+    thread_id = orig["threadId"]
+
+    msg = MIMEText(body)
+    subject = hdrs.get("subject", "")
+    msg["Subject"] = subject if subject.lower().startswith("re:") else f"Re: {subject}"
+    msg["To"] = hdrs.get("reply-to") or hdrs.get("from", "")
+    if hdrs.get("message-id"):
+        msg["In-Reply-To"] = hdrs["message-id"]
+        refs = " ".join(filter(None, [hdrs.get("references", ""), hdrs["message-id"]]))
+        msg["References"] = refs
+
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+    draft = execute(_gmail().users().drafts().create(
+        userId="me",
+        body={"message": {"raw": raw, "threadId": thread_id}},
+    ))
+    return {"draft_id": draft["id"]}
+
+
+def send_email(draft_id: str) -> dict:
+    """Send a saved draft by its draft_id. Returns {"message_id": ...}. See docs/FUNCTIONS.md."""
+    result = execute(_gmail().users().drafts().send(userId="me", body={"id": draft_id}))
+    return {"message_id": result["id"]}
+
+
+def _message_to_result(msg: dict) -> dict:
+    """Convert a raw API message to the same shape as _to_email."""
+    f = message_fields(msg)
+    return {
+        "external_id": f["external_id"],
+        "thread_id":   f["thread_id"],
+        "title":       f["title"],
+        "sender":      f["sender"],
+        "date":        f["date"],
+        "participants": f["participants"],
+        "text":        f["text"],
+    }
 
 
 def _date_filter(date_from, date_to):
