@@ -60,6 +60,7 @@ def call_model(messages, tools, system=""):
                 tools=tools,
                 system=system,
                 max_tokens=8192,
+                extra_headers={"anthropic-beta": "advanced-tool-use-2025-11-20"},
             )
         except anthropic.APIError as e:
             if not _is_retryable(e) or attempt == _MAX_TRIES - 1:
